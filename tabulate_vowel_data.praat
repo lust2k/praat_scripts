@@ -2,30 +2,33 @@
 # For this script to work as intended, the TextGrid with the annotated segments must be named after the input Sound file and located in the same folder
 #
 # Input:
-# 	file sound_file - Sound file (.wav)
-# 	integer vowel_tier - Interval tier containing annotated vowels
-#	integer points - Number of points (currently supports 3 or 5 points)
-#	integer padding - Padding (%) to the first and last data points (if padding = 0, first and last points will be exactly at segment start and end; if say padding = 5, first point will be at 5% and last at 95%)
-#	integer formants - Number of formants
-#	integer formant_ceiling - Formant ceiling (Hz)
-#	(OPTIONAL) integer syllable_tier - Interval tier containing annotated syllables (if a positive value is assigned, the final output will include syllable data and vowel relative duration)
+# 	sound_file - Sound file (.wav)
+# 	vowel_tier - Interval tier containing annotated vowels
+#	points - Number of data points (currently supports 3 or 5 - segment start, middle, end, first quartile, third quartile)
+#	padding - Padding (%) to the first and last data points (if padding = 0, first and last points will be exactly at segment start and end; if say padding = 5, first point will be at 5% and last at 95%)
+#	formants - Number of formants
+#	formant_ceiling - Formant ceiling (Hz)
+#	(OPTIONAL) syllable_tier - Interval tier containing annotated syllables (if a positive value is assigned, the final output will include syllable data and vowel relative duration)
 # Output:
-#	file - Tab-separated text file (.txt) containing the following data: vowel label, vowel duration (ms), intensity (dB) and formants (Hz) at each point
-#	(OPTIONAL) file - Tab-separated text file (.txt) formatted to NORM standards
+#	outfile - Tab-separated text file (.txt) containing the following data: vowel label, vowel duration (ms), intensity (dB), formants (Hz) and pitch/F0 (Hz) at each point
+#	(OPTIONAL) norm_outfile - Tab-separated text file (.txt) formatted to NORM standards
 #
-# Luis Stemmer (FONAPLI/UFSC), 2026 - based on an older script made by Fernando S. Pacheco @ LINSE/UFSC
+# Luis Stemmer (FONAPLI/UFSC), 2026
 
 # Prompt for Sound file and parameters
 form: "Extract and tabulate vowel data from an interval tier"
 	infile: "Sound file", ""
-	integer: "Vowel tier", ""
+	natural: "Vowel tier", ""
 	optionmenu: "Points", 2
 		option: "3"
 		option: "5"
 	comment: "Padding (%) to the first and last data points (i.e. vowel start and end)"
-	positive: "Padding", "0"
+	integer: "Padding", "0"
+	comment: "-----------------------------------------------| Pitch settings |-------------------------------------------------"
+	natural: "F0 min", "50"
+	natural: "F0 max", "800"
 	comment: "---------------------------------------------| Formant settings |---------------------------------------------"
-	positive: "Formants", "5"
+	natural: "Formants", "5"
 	positive: "Formant ceiling", "5500"
 	comment: "--------------------------------------------------------------------------------------------------------------------------"
 	comment: "Identify outliers and calculate F1, F2 and F3 averages?"
@@ -52,11 +55,13 @@ textgridID = Read from file: textgrid$
 # Get number of segments in vowels tier
 vowel_segments = Get number of intervals: vowel_tier
 
-# Extract formants and intensity
+# Extract pitch, formants and intensity
+selectObject: soundID
+pitchID = To Pitch (filtered autocorrelation): 0, f0_min, f0_max, 15, "no", 0.03, 0.09, 0.5, 0.055, 0.35, 0.14
 selectObject: soundID
 formantID = To Formant (burg): 0.0, formants, formant_ceiling, 0.025, 50
 selectObject: soundID
-intensityID = To Intensity: 100, 0.0, "no"
+intensityID = To Intensity: 100, 0.0, 1
 
 # Write table header according to input parameters
 table_header$ = "Vowel" + tab$ + "Duration(ms)"
@@ -65,9 +70,14 @@ if syllable_tier > 0
 endif
 for point from 1 to points
 	table_header$ = table_header$ + tab$ + "Timestamp_p" + string$(point) + tab$ + "Intensity_p" + string$(point)
-	for formant from 1 to formants
+	for formant from 1 to 3 ; not interested in F4 and F5
 		table_header$ = table_header$ + tab$ + "F" + string$(formant) + "_p" + string$(point)
 	endfor
+endfor
+# Pitch (F0) values at each point are grouped at the end of the table so pitch contour is discernible
+# Unlike the values of other formants, each individual F0 data point is essential.
+for point from 1 to points
+	table_header$ = table_header$ + tab$ + "F0_p" + string$(point)
 endfor
 
 # Data processing starts here!
@@ -109,29 +119,34 @@ for segment from 1 to vowel_segments
 			vowel_data$ = syllable_data$ + tab$ + vowel_data$ + tab$ + string$(vowel_relative_duration) + "%"
 		endif
 
-		# Get intensity and formants at each point
+		# Get pitch, intensity and formants at each point
+		# Columns for pitch (F0) values are appended to the table so pitch contour can easily be seen
+		pitch_contour$ = ""
 		for point from 1 to points
+			selectObject: pitchID
+			f0_at_point = Get value at time: points#[point], "Hertz", "linear"
+			pitch_contour$ = pitch_contour$ + tab$ + string$(f0_at_point)
 			selectObject: intensityID
 			intensity_at_point = Get value at time: points#[point], "cubic"
 			vowel_data$ = vowel_data$ + tab$ + string$(points#[point]) + tab$ + string$(intensity_at_point)
-			for formant from 1 to formants
+			for formant from 1 to 3
 				selectObject: formantID
 				formant_at_point = Get value at time: formant, points#[point], "hertz", "linear"
 				vowel_data$ = vowel_data$ + tab$ + string$(formant_at_point)
 			endfor
 		endfor
-	vowel_data$ = replace$(vowel_data$, ".", ",", 0)
-	final_data$ = final_data$ + vowel_data$ + newline$
+		vowel_data$ = vowel_data$ + pitch_contour$
+		vowel_data$ = replace$(vowel_data$, ".", ",", 0)
+		final_data$ = final_data$ + vowel_data$ + newline$
 	endif
 endfor
 
 final_output$ = table_header$ + newline$ + final_data$
 
-# Write data spreadsheet as a tab-separated file
+# Write final output (data spreadsheet as a tab-separated file)
 beginPause: "Confirm path to output file"
 	outfile: "Outfile", folder$ + sound_name$ + ".txt"
 endPause: "Continue", 1
-
 writeFile: outfile$, final_output$
 
 ### MORE OPTIONS ###
@@ -182,7 +197,7 @@ if identify_outliers
 		sorted_f3# = sort#(f3#)
 		q1_index = (points + 1) * 0.25
 		q3_index = (points + 1) * 0.75
-		# If quartile positions are not integers, apply linear interpolation
+		# If quartile positions are not integers (i.e. it falls between two points), apply linear interpolation
 		if q1_index == ceiling(q1_index)
 			f1q1 = sorted_f1#[q1_index]
 			f1q3 = sorted_f1#[q3_index]
@@ -205,7 +220,7 @@ if identify_outliers
 		f3_IQR = f3q3 - f3q1
 
 		# Identify and highlight outliers (values above or below a factor of the interquartile range)
-		factor = 0.5 ; the more usual value of 1.5 is too restrictive and wont find outliers
+		factor = 0.5 ; the more usual value of 1.5 is not strict enough and wont find outliers
 		# Get average of F1, F2 and F3 without outliers
 		f1_sum = sum(f1#)
 		f1_size = size(f1#)
@@ -296,5 +311,6 @@ endif
 # Remove objects opened by this script
 removeObject: soundID
 removeObject: textgridID
+removeObject: pitchID
 removeObject: formantID
 removeObject: intensityID
