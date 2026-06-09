@@ -74,11 +74,9 @@ for point from 1 to points
 		table_header$ = table_header$ + tab$ + "F" + string$(formant) + "_p" + string$(point)
 	endfor
 endfor
-# Pitch (F0) values at each point are grouped at the end of the table so pitch contour is discernible
+# Pitch (F0) values at each point are written in a single column to show pitch contour
 # Unlike the values of other formants, each individual F0 data point is essential.
-for point from 1 to points
-	table_header$ = table_header$ + tab$ + "F0_p" + string$(point)
-endfor
+table_header$ = table_header$ + tab$ + "Pitch_contour"
 
 # Data processing starts here!
 final_data$ = ""
@@ -87,9 +85,9 @@ for segment from 1 to vowel_segments
 	segment_label$ = Get label of interval: vowel_tier, segment
 	vowel_data$ = ""
 
-	# Get data of every vowel (non-empty segments)
+	##### Get data of every vowel (non-empty segments)
 	if segment_label$ <> ""
-		# Get data points (timestamps)
+		### Get data points (timestamps)
 		vowel_start = Get start time of interval: vowel_tier, segment
 		vowel_end = Get end time of interval: vowel_tier, segment
 		vowel_mid = (vowel_start + vowel_end) / 2
@@ -107,7 +105,7 @@ for segment from 1 to vowel_segments
 			points# = {vowel_start, vowel_q1, vowel_mid, vowel_q3, vowel_end}
 		endif
 
-		# Get syllable data and relative duration of vowels
+		### Get syllable data and relative duration of vowels
 		if syllable_tier > 0
 			syllable = Get interval at time: syllable_tier, vowel_start
 			syllable_label$ = Get label of interval: syllable_tier, syllable
@@ -119,23 +117,52 @@ for segment from 1 to vowel_segments
 			vowel_data$ = syllable_data$ + tab$ + vowel_data$ + tab$ + string$(vowel_relative_duration) + "%"
 		endif
 
-		# Get pitch, intensity and formants at each point
-		# Columns for pitch (F0) values are appended to the table so pitch contour can easily be seen
-		pitch_contour$ = ""
+		### Get pitch, intensity and formants at each point
+		# Pitch values are temporarily stored in a list
 		for point from 1 to points
 			selectObject: pitchID
-			f0_at_point = Get value at time: points#[point], "Hertz", "linear"
-			pitch_contour$ = pitch_contour$ + tab$ + string$(f0_at_point)
+			pitch_val[point] = Get value at time: points#[point], "Hertz", "linear"
+			if pitch_val[point] == undefined
+				pitch_val[point] = -1
+			endif
 			selectObject: intensityID
 			intensity_at_point = Get value at time: points#[point], "cubic"
 			vowel_data$ = vowel_data$ + tab$ + string$(points#[point]) + tab$ + string$(intensity_at_point)
-			for formant from 1 to 3
+			for formant from 1 to 3	
 				selectObject: formantID
 				formant_at_point = Get value at time: formant, points#[point], "hertz", "linear"
 				vowel_data$ = vowel_data$ + tab$ + string$(formant_at_point)
 			endfor
 		endfor
-		vowel_data$ = vowel_data$ + pitch_contour$
+
+		### Add maximum pitch to the list of values (ordered by time)
+		# This assures we don't make mistakes in identifying the peak and its alignment
+		selectObject: pitchID
+		pitch_max = Get maximum: points#[1], points#[points], "Hertz", "parabolic"
+		pitch_max_t = Get time of maximum: points#[1], points#[points], "Hertz", "parabolic"
+		# Get index where maximum pitch value will be inserted
+		for point from 1 to (points - 1)
+			if pitch_max_t >= points#[point] and pitch_max_t <= points#[point + 1]
+				pitch_max_index = point + 1
+			endif
+		endfor
+		# Shift right all elements after the insertion point to make space
+		index = points + 1
+		while index > pitch_max_index
+			pitch_val[index] = pitch_val[index - 1]
+			index = index - 1
+		endwhile
+		pitch_val[pitch_max_index] = pitch_max
+
+		# Write pitch values as a set separated by "|" in a single column to show pitch contour
+		pitch_contour$ = "("
+		for point from 1 to points
+			pitch_contour$ = pitch_contour$ + fixed$(pitch_val[point], 2) + " | "
+		endfor
+		pitch_contour$ = pitch_contour$ + fixed$(pitch_val[points+1], 2) + ")"
+		vowel_data$ = vowel_data$ + tab$ + pitch_contour$
+
+		# Replace periods by commas and append vowel data to final data
 		vowel_data$ = replace$(vowel_data$, ".", ",", 0)
 		final_data$ = final_data$ + vowel_data$ + newline$
 	endif
@@ -149,7 +176,7 @@ beginPause: "Confirm path to output file"
 endPause: "Continue", 1
 writeFile: outfile$, final_output$
 
-### MORE OPTIONS ###
+##### MORE OPTIONS #####
 # Identify outliers and get average formant values
 # Format data to NORM standards (using average formant values)
 to_NORM = 0
@@ -220,7 +247,7 @@ if identify_outliers
 		f3_IQR = f3q3 - f3q1
 
 		# Identify and highlight outliers (values above or below a factor of the interquartile range)
-		factor = 0.5 ; the more usual value of 1.5 is not strict enough and wont find outliers
+		factor = 0.5 ; the more usual value of 1.5 is too strict and wont correctly identify what we're calling outliers
 		# Get average of F1, F2 and F3 without outliers
 		f1_sum = sum(f1#)
 		f1_size = size(f1#)
