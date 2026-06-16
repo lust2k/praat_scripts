@@ -2,15 +2,39 @@
 
 ### tabulate_vowel_data.praat
 
-- Extracts and tabulates segment data (duration, formants, intensity) from an interval tier.
+**Purpose:** Extract and tabulate segment data from an interval tier.
 
-> Requires an input **sound** file. A TextGrid with the annotated segments must be named after the input Sound file and located in the same folder (Praat standard). Originally meant for vowels but it can be used to get these basic data from any segments.
+**Input:**
+- sound_file - Sound file (.wav)
+- vowel_tier - Interval tier containing annotated vowels - or other segments
+- context_tier - Interval tier containing annotated context, such as syllables, moras, words or sentences (leave at 0 to ignore; if a positive value is assigned, the final output will include context data and relative vowel duration)
+-	padding - padding (%) to the first and last data points (if padding = 0, first and last points will be exactly at segment start and end; if say padding = 5, first point will be at 5% and last at 95%)
+-	formants - Number of formants
+-	formant_ceiling - Formant ceiling (Hz)
 
-Optionally, uses interquartile range (IQR) to identify outliers in the lists of formant values (usually mistakes in annotation or Praat errors) and calculates normal averages. With these averages, formats data to [NORM](https://lingtools.uoregon.edu/norm/index.php) standards.
+> Requires an input **sound** file. The script looks for a TextGrid with the same name as the Sound file and located in the same folder.
+
+**Data collection and preprocessing:**
+
+For each non-empty interval in `vowel_tier`, extracts duration and intensity, formants and pitch (fundamental frequency) from five data points (segment start, 25%, middle, 75%, end). The five pitch values are combined with the maximum pitch value in a list ordered by time, and written as a pipe-separated string in a single column labeled `pitch_contour`.  
+
+Unless `preprocessing` is unchecked, tags outlier formant values using interquartile range (undefined values are set to -1) and calculates normal averages for F1, F2 and F3. Optionally, formats data to [NORM](https://lingtools.uoregon.edu/norm/index.php) standards using these averages.
+
+**Output:**
+- Tab-separated text file (.txt) containing the following data: vowel label, vowel duration (ms), intensity (dB), formants (Hz) and pitch/F0 (Hz) at each point
+- (OPTIONAL) norm_outfile - Tab-separated text file (.txt) formatted to NORM standards
 
 ### move_boundaries.praat
 
-- Moves all boundaries in specified tier(s) to the nearest zero crossing.
+**Purpose:** Adjust interval boundaries in a TextGrid. It moves all boundaries on specified tier(s) to the nearest zero crossing.
 
-> Requires an input **sound** file. A TextGrid with the annotated segments must be named after the input Sound file and located in the same folder (Praat standard).
+**Input:**
+- sound_file - Sound file (.wav)
+- interval_tier - Interval tier to be processed (0 = all tiers)
+- replace_tier - If false, the original tier(s) will be preserved in the output file; otherwise, tiers are replaced 
 
+> Requires an input **sound** file. The script looks for a TextGrid with the same name as the Sound file and located in the same folder.
+
+**Output:**
+- TextGrid *_n0x - TextGrid file with processed tiers. This script does not overwrite the original TextGrid.
+ 
