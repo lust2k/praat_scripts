@@ -3,12 +3,11 @@
 #
 # Input:
 # 	sound_file - Sound file (.wav)
-# 	vowel_tier - Interval tier containing annotated vowels
-#	points - Number of data points (currently supports 3 or 5 - segment start, middle, end, first quartile, third quartile)
-#	padding - Padding (%) to the first and last data points (if padding = 0, first and last points will be exactly at segment start and end; if say padding = 5, first point will be at 5% and last at 95%)
+# 	vowel_tier - Interval tier containing annotated vowels - or other segments
+#	context_tier - Interval tier containing annotated context, such as syllables, moras, words or sentences (leave at 0 to ignore; if a positive value is assigned, the final output will include context data and relative vowel duration)
+#	offset - Offset (%) to the first and last data points (if offset = 0, first and last points will be exactly at segment start and end; if say offset = 5, first point will be at 5% and last at 95%)
 #	formants - Number of formants
 #	formant_ceiling - Formant ceiling (Hz)
-#	(OPTIONAL) syllable_tier - Interval tier containing annotated syllables (if a positive value is assigned, the final output will include syllable data and vowel relative duration)
 # Output:
 #	outfile - Tab-separated text file (.txt) containing the following data: vowel label, vowel duration (ms), intensity (dB), formants (Hz) and pitch/F0 (Hz) at each point
 #	(OPTIONAL) norm_outfile - Tab-separated text file (.txt) formatted to NORM standards
@@ -19,26 +18,22 @@
 form: "Extract and tabulate vowel data from an interval tier"
 	infile: "Sound file", ""
 	natural: "Vowel tier", ""
-	optionmenu: "Points", 2
-		option: "3"
-		option: "5"
-	comment: "Padding (%) to the first and last data points (i.e. vowel start and end)"
-	integer: "Padding", "0"
-	comment: "-----------------------------------------------| Pitch settings |-------------------------------------------------"
+	comment: "Context is used as reference to calculate vowel relative duration"
+	integer: "Context tier", "0"
+	comment: "Offset (%) to the first and last data points (i.e. vowel start and end)"
+	integer: "Offset", "0"
+	comment: "Pitch settings"
 	natural: "F0 min", "50"
 	natural: "F0 max", "800"
-	comment: "---------------------------------------------| Formant settings |---------------------------------------------"
+	comment: "Formant settings"
 	natural: "Formants", "5"
 	positive: "Formant ceiling", "5500"
-	comment: "--------------------------------------------------------------------------------------------------------------------------"
-	comment: "Identify outliers and calculate F1, F2 and F3 averages?"
-	boolean: "Identify outliers", 0
-	comment: "To calculate relative duration of vowels, insert tier with annotated syllables (or morae)"
-	integer: "Syllable tier", "-1"
-	comment: "Leave at -1 to skip."
+	comment: "Formant data preprocessing. Identify outliers and calculate averages."
+	boolean: "Preprocessing", 1
 endform
 
-points = number(points$)
+points = 5
+points# = zero#(points)
 
 # Get folder path
 last_slash = rindex(sound_file$, "/")
@@ -52,7 +47,7 @@ soundID = Read from file: sound_file$
 sound_name$ = selected$("Sound")
 textgrid$ = folder$ + sound_name$ + ".TextGrid"
 textgridID = Read from file: textgrid$
-# Get number of segments in vowels tier
+# Get number of segments in vowel tier
 vowel_segments = Get number of intervals: vowel_tier
 
 # Extract pitch, formants and intensity
@@ -65,8 +60,8 @@ intensityID = To Intensity: 100, 0.0, 1
 
 # Write table header according to input parameters
 table_header$ = "Vowel" + tab$ + "Duration(ms)"
-if syllable_tier > 0
-	table_header$ = "Syllable" + tab$ + "Syllable duration(ms)" + tab$ + table_header$ + tab$ + "Duration(%)"
+if context_tier > 0
+	table_header$ = "Context" + tab$ + "Context duration(ms)" + tab$ + table_header$ + tab$ + "Duration(%)"
 endif
 for point from 1 to points
 	table_header$ = table_header$ + tab$ + "Timestamp_p" + string$(point) + tab$ + "Intensity_p" + string$(point)
@@ -74,8 +69,6 @@ for point from 1 to points
 		table_header$ = table_header$ + tab$ + "F" + string$(formant) + "_p" + string$(point)
 	endfor
 endfor
-# Pitch (F0) values at each point are written in a single column to show pitch contour
-# Unlike the values of other formants, each individual F0 data point is essential.
 table_header$ = table_header$ + tab$ + "Pitch_contour"
 
 # Data processing starts here!
@@ -85,36 +78,32 @@ for segment from 1 to vowel_segments
 	segment_label$ = Get label of interval: vowel_tier, segment
 	vowel_data$ = ""
 
-	##### Get data of every vowel (non-empty segments)
+	##### Get data of every vowel (skip empty segments)
 	if segment_label$ <> ""
 		### Get data points (timestamps)
 		vowel_start = Get start time of interval: vowel_tier, segment
 		vowel_end = Get end time of interval: vowel_tier, segment
 		vowel_mid = (vowel_start + vowel_end) / 2
+		vowel_q1 = (vowel_start + vowel_mid) / 2
+		vowel_q3 = (vowel_mid + vowel_end) / 2
 		vowel_duration = vowel_end - vowel_start
 		vowel_data$ = segment_label$ + tab$ + string$(vowel_duration * 1000)
 
-		vowel_start = vowel_start + (vowel_duration * padding / 100)
-		vowel_end = vowel_end - (vowel_duration * padding / 100)
+		vowel_start = vowel_start + (vowel_duration * offset / 100)
+		vowel_end = vowel_end - (vowel_duration * offset / 100)
 		
-		if points == 3
-			points# = {vowel_start, vowel_mid, vowel_end}
-		elif points == 5
-			vowel_q1 = (vowel_start + vowel_mid) / 2
-			vowel_q3 = (vowel_mid + vowel_end) / 2
-			points# = {vowel_start, vowel_q1, vowel_mid, vowel_q3, vowel_end}
-		endif
+		points# = {vowel_start, vowel_q1, vowel_mid, vowel_q3, vowel_end}
 
-		### Get syllable data and relative duration of vowels
-		if syllable_tier > 0
-			syllable = Get interval at time: syllable_tier, vowel_start
-			syllable_label$ = Get label of interval: syllable_tier, syllable
-			syllable_start = Get start time of interval: syllable_tier, syllable
-			syllable_end = Get end time of interval: syllable_tier, syllable
-			syllable_duration = syllable_end - syllable_start
-			vowel_relative_duration = (vowel_duration / syllable_duration) * 100
-			syllable_data$ = syllable_label$ + tab$ + string$(syllable_duration * 1000)
-			vowel_data$ = syllable_data$ + tab$ + vowel_data$ + tab$ + string$(vowel_relative_duration) + "%"
+		### Get context data and relative duration of vowels
+		if context_tier > 0
+			context = Get interval at time: context_tier, vowel_start
+			context_label$ = Get label of interval: context_tier, context
+			context_start = Get start time of interval: context_tier, context
+			context_end = Get end time of interval: context_tier, context
+			context_duration = context_end - context_start
+			vowel_relative_duration = (vowel_duration / context_duration) * 100
+			context_data$ = context_label$ + tab$ + string$(context_duration * 1000)
+			vowel_data$ = context_data$ + tab$ + vowel_data$ + tab$ + string$(vowel_relative_duration) + "%"
 		endif
 
 		### Get pitch, intensity and formants at each point
@@ -136,16 +125,18 @@ for segment from 1 to vowel_segments
 		endfor
 
 		### Add maximum pitch to the list of values (ordered by time)
-		# This assures we don't make mistakes in identifying the peak and its alignment
+		# This ensures we don't make mistakes in identifying the peak and its alignment
 		selectObject: pitchID
 		pitch_max = Get maximum: points#[1], points#[points], "Hertz", "parabolic"
 		pitch_max_t = Get time of maximum: points#[1], points#[points], "Hertz", "parabolic"
 		# Get index where maximum pitch value will be inserted
+		pitch_max_index = 1 ; insert max pitch at the start if for some obscure reason the following loop fails
 		for point from 1 to (points - 1)
-			if pitch_max_t >= points#[point] and pitch_max_t <= points#[point + 1]
+			if pitch_max_t >= points#[point] and pitch_max_t < points#[point + 1]
 				pitch_max_index = point + 1
 			endif
 		endfor
+
 		# Shift right all elements after the insertion point to make space
 		index = points + 1
 		while index > pitch_max_index
@@ -170,18 +161,18 @@ endfor
 
 final_output$ = table_header$ + newline$ + final_data$
 
-# Write final output (data spreadsheet as a tab-separated file)
+# Write final output (a tab-separated text file)
 beginPause: "Confirm path to output file"
 	outfile: "Outfile", folder$ + sound_name$ + ".txt"
 endPause: "Continue", 1
 writeFile: outfile$, final_output$
 
-##### MORE OPTIONS #####
-# Identify outliers and get average formant values
+##### Preprocessing #####
+# Identify outliers in formant values and get averages
 # Format data to NORM standards (using average formant values)
 to_NORM = 0
 norm_outfile$ = folder$ + sound_name$ + "_NORM.txt"
-if identify_outliers
+if preprocessing
 	vowel_table = Read Table from tab-separated file: outfile$
 
 	column_exists = Get column index: "F1_avg"
@@ -246,7 +237,7 @@ if identify_outliers
 		f2_IQR = f2q3 - f2q1
 		f3_IQR = f3q3 - f3q1
 
-		# Identify and highlight outliers (values above or below a factor of the interquartile range)
+		# Identify outliers (values above or below a factor of the interquartile range)
 		factor = 0.5 ; the more usual value of 1.5 is too strict and wont correctly identify what we're calling outliers
 		# Get average of F1, F2 and F3 without outliers
 		f1_sum = sum(f1#)
@@ -281,11 +272,12 @@ if identify_outliers
 	endfor
 
 	# Save changes
+	selectObject: vowel_table
 	Save as tab-separated file: outfile$
 
 	beginPause: "NORM format"
 		comment: "Format the data to NORM standards?"
-		boolean: "To NORM", 0
+		boolean: "To NORM", 1
 		word: "Speaker name", ""
 	endPause: "Continue", 1
 	if to_NORM
@@ -296,8 +288,10 @@ if identify_outliers
 		for row from 1 to rows
 			selectObject: vowel_table
 			vowel$ = Get value: row, "Vowel"
-			if syllable_tier > 0
-				context$ = Get value: row, "Syllable"
+			if context_tier > 0
+				context$ = Get value: row, "Context"
+			else
+				context$ = ""
 			endif
 			f1_avg$ = Get value: row, "F1_avg"
 			f2_avg$ = Get value: row, "F2_avg"
