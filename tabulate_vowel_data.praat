@@ -5,9 +5,12 @@
 # 	sound_file - Sound file (.wav)
 # 	vowel_tier - Interval tier containing annotated vowels - or other segments
 #	context_tier - Interval tier containing annotated context, such as syllables, moras, words or sentences (leave at 0 to ignore; if a positive value is assigned, the final output will include context data and relative vowel duration)
-#	offset - Offset (%) to the first and last data points (if offset = 0, first and last points will be exactly at segment start and end; if say offset = 5, first point will be at 5% and last at 95%)
+#	padding - Padding (%) to the first and last data points (if padding = 0, first and last points will be exactly at segment start and end; if say padding = 5, first point will be at 5% and last at 95%)
+#	f0_min - Minimum fundamental frequency
+#	f0_max - Maximum fundamental frequency
 #	formants - Number of formants
 #	formant_ceiling - Formant ceiling (Hz)
+# 	preprocessing - If true, applies preprocessing steps
 # Output:
 #	outfile - Tab-separated text file (.txt) containing the following data: vowel label, vowel duration (ms), intensity (dB), formants (Hz) and pitch/F0 (Hz) at each point
 #	(OPTIONAL) norm_outfile - Tab-separated text file (.txt) formatted to NORM standards
@@ -20,8 +23,8 @@ form: "Extract and tabulate vowel data from an interval tier"
 	natural: "Vowel tier", ""
 	comment: "Context is used as reference to calculate vowel relative duration"
 	integer: "Context tier", "0"
-	comment: "Offset (%) to the first and last data points (i.e. vowel start and end)"
-	integer: "Offset", "0"
+	comment: "Padding (%) to the first and last data points (i.e. vowel start and end)"
+	integer: "Padding", "0"
 	comment: "Pitch settings"
 	natural: "F0 min", "50"
 	natural: "F0 max", "800"
@@ -89,8 +92,8 @@ for segment from 1 to vowel_segments
 		vowel_duration = vowel_end - vowel_start
 		vowel_data$ = segment_label$ + tab$ + string$(vowel_duration * 1000)
 
-		vowel_start = vowel_start + (vowel_duration * offset / 100)
-		vowel_end = vowel_end - (vowel_duration * offset / 100)
+		vowel_start = vowel_start + (vowel_duration * padding / 100)
+		vowel_end = vowel_end - (vowel_duration * padding / 100)
 		
 		points# = {vowel_start, vowel_q1, vowel_mid, vowel_q3, vowel_end}
 
