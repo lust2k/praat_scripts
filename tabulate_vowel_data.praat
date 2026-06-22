@@ -18,12 +18,13 @@
 # Luis Stemmer (FONAPLI/UFSC), 2026
 
 # Prompt for Sound file and parameters
+
 form: "Extract and tabulate vowel data from an interval tier"
 	infile: "Sound file", ""
 	natural: "Vowel tier", ""
 	comment: "Context is used as reference to calculate vowel relative duration"
 	integer: "Context tier", "0"
-	comment: "Padding (%) to the first and last data points (i.e. vowel start and end)"
+	comment: "Padding (%) to the first and last data points"
 	integer: "Padding", "0"
 	comment: "Pitch settings"
 	natural: "F0 min", "50"
@@ -34,6 +35,10 @@ form: "Extract and tabulate vowel data from an interval tier"
 	comment: "Formant data preprocessing. Identify outliers and calculate averages."
 	boolean: "Preprocessing", 1
 endform
+
+if praatVersion < 6435
+	pauseScript: "You may need to update your Praat to run this script. Your current version is: " + praatVersion$
+endif
 
 points = 5
 points# = zero#(points)
@@ -59,7 +64,7 @@ pitchID = To Pitch (filtered autocorrelation): 0, f0_min, f0_max, 15, "no", 0.03
 selectObject: soundID
 formantID = To Formant (burg): 0.0, formants, formant_ceiling, 0.025, 50
 selectObject: soundID
-intensityID = To Intensity: 100, 0.0, 1
+intensityID = To Intensity: f0_min, 0.0, 1
 
 # Write table header according to input parameters
 table_header$ = "Vowel" + tab$ + "Duration(ms)"
@@ -131,14 +136,22 @@ for segment from 1 to vowel_segments
 		# This ensures we don't make mistakes in identifying the peak and its alignment
 		selectObject: pitchID
 		pitch_max = Get maximum: points#[1], points#[points], "Hertz", "parabolic"
+		if pitch_max == undefined
+			pitch_max = -1
+		endif
 		pitch_max_t = Get time of maximum: points#[1], points#[points], "Hertz", "parabolic"
 		# Get index where maximum pitch value will be inserted
-		pitch_max_index = 1 ; insert max pitch at the start if for some obscure reason the following loop fails
-		for point from 1 to (points - 1)
-			if pitch_max_t >= points#[point] and pitch_max_t < points#[point + 1]
-				pitch_max_index = point + 1
-			endif
-		endfor
+		pitch_max_index = 1 ; if max pitch happens before first point, insert at start
+		if pitch_max_t >= points#[points]
+			appendInfoLine: segment_label$
+			pitch_max_index = points + 1 ; if max pitch happens after last point, insert at end
+		else
+			for point from 1 to (points - 1)
+				if pitch_max_t >= points#[point] and pitch_max_t < points#[point + 1]
+					pitch_max_index = point + 1
+				endif
+			endfor
+		endif
 
 		# Shift right all elements after the insertion point to make space
 		index = points + 1
@@ -178,6 +191,14 @@ norm_outfile$ = folder$ + sound_name$ + "_NORM.txt"
 if preprocessing
 	vowel_table = Read Table from tab-separated file: outfile$
 
+	column_exists = Get column index: "Intensity_avg"
+	if column_exists == 0
+		Append column: "Intensity_avg"
+	endif
+	column_exists = Get column index: "Intensity_max"
+	if column_exists == 0
+		Append column: "Intensity_max"
+	endif
 	column_exists = Get column index: "F1_avg"
 	if column_exists == 0
 		Append column: "F1_avg"
@@ -193,11 +214,14 @@ if preprocessing
 
 	vowels = Get number of rows
 	for vowel from 1 to vowels
-		# Read F1, F2 and F3 values at each point
+		# Read intensity and formant values at each point
+		intensity# = zero#(points)
 		f1# = zero#(points) 
 		f2# = zero#(points)
 		f3# = zero#(points)
 		for point from 1 to points
+			intensity#[point] = Get value: vowel, "Intensity_p" + string$(point) ; Intensity shouldn't return undefined values
+
 			f1#[point] = Get value: vowel, "F1_p" + string$(point)
 			if f1#[point] == undefined
 				f1#[point] = -1
@@ -269,9 +293,14 @@ if preprocessing
 		f1_avg = f1_sum / f1_size
 		f2_avg = f2_sum / f2_size
 		f3_avg = f3_sum / f3_size
+		intensity_avg = mean(intensity#) ; No preprocessing done to intensity values, just get average and maximum
+		intensity_max = max(intensity#)
+
 		Set string value: vowel, "F1_avg", replace$(string$(f1_avg), ".", ",", 0)
 		Set string value: vowel, "F2_avg", replace$(string$(f2_avg), ".", ",", 0)
 		Set string value: vowel, "F3_avg", replace$(string$(f3_avg), ".", ",", 0)
+		Set string value: vowel, "Intensity_avg", replace$(string$(intensity_avg), ".", ",", 0)
+		Set string value: vowel, "Intensity_max", replace$(string$(intensity_max), ".", ",", 0)
 	endfor
 
 	# Save changes
