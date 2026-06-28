@@ -1,34 +1,29 @@
-# Extract and tabulate vowel data from an interval tier
+# Extract and tabulate segment data from an interval tier
 # For this script to work as intended, the TextGrid with the annotated segments must be named after the input Sound file and located in the same folder
 #
 # Input:
 # 	sound_file - Sound file (.wav)
-# 	vowel_tier - Interval tier containing annotated vowels - or other segments
-#	context_tier - Interval tier containing annotated context, such as syllables, moras, words or sentences (leave at 0 to ignore; if a positive value is assigned, the final output will include context data and relative vowel duration)
+# 	segment_tier - Interval tier containing annotated segments - or other segments
+#	context_tier - Interval tier containing annotated context, such as syllables, moras, words or sentences (leave at 0 to ignore; if a positive value is assigned, the final output will include context data and relative segment duration)
 #	padding - Padding (%) to the first and last data points (if padding = 0, first and last points will be exactly at segment start and end; if say padding = 5, first point will be at 5% and last at 95%)
-#	f0_min - Minimum fundamental frequency
-#	f0_max - Maximum fundamental frequency
 #	formants - Number of formants
 #	formant_ceiling - Formant ceiling (Hz)
 # 	preprocessing - If true, applies preprocessing steps
 # Output:
-#	outfile - Tab-separated text file (.txt) containing the following data: vowel label, vowel duration (ms), intensity (dB), formants (Hz) and pitch/F0 (Hz) at each point
+#	outfile - Tab-separated text file (.txt) containing the following data: segment label, segment duration (ms), intensity (dB), formants (Hz) and pitch/F0 (Hz) at each point
 #	(OPTIONAL) norm_outfile - Tab-separated text file (.txt) formatted to NORM standards
 #
 # Luis Stemmer (FONAPLI/UFSC), 2026
 
 # Prompt for Sound file and parameters
 
-form: "Extract and tabulate vowel data from an interval tier"
+form: "Extract and tabulate segment data from an interval tier"
 	infile: "Sound file", ""
-	natural: "Vowel tier", ""
-	comment: "Context is used as reference to calculate vowel relative duration"
+	natural: "Segment tier", ""
+	comment: "Context is used as reference to calculate segment relative duration"
 	integer: "Context tier", "0"
 	comment: "Padding (%) to the first and last data points"
 	integer: "Padding", "0"
-	comment: "Pitch settings"
-	natural: "F0 min", "50"
-	natural: "F0 max", "800"
 	comment: "Formant settings"
 	natural: "Formants", "5"
 	positive: "Formant ceiling", "5500"
@@ -55,19 +50,32 @@ soundID = Read from file: sound_file$
 sound_name$ = selected$("Sound")
 textgrid$ = folder$ + sound_name$ + ".TextGrid"
 textgridID = Read from file: textgrid$
-# Get number of segments in vowel tier
-vowel_segments = Get number of intervals: vowel_tier
+# Get number of segments in segment tier
+segments = Get number of intervals: segment_tier
+# Get tier name
+tier_name$ = Get tier name: segment_tier
 
-# Extract pitch, formants and intensity
+# Extract pitch in two steps to optimize inputs
 selectObject: soundID
-pitchID = To Pitch (filtered autocorrelation): 0, f0_min, f0_max, 15, "no", 0.03, 0.09, 0.5, 0.055, 0.35, 0.14
+pitchID = To Pitch (filtered autocorrelation): 0, 50, 800, 15, "no", 0.03, 0.09, 0.5, 0.055, 0.35, 0.14
+f0_min = Get minimum: 0, 0, "Hertz", "parabolic"
+f0_max = Get maximum: 0, 0, "Hertz", "parabolic"
+removeObject: pitchID
+better_min = floor(f0_min - (0.2 * f0_min))
+better_max = ceiling(f0_max + (0.2 * f0_max))
+pauseScript: "Optimizing pitch parameters to: ", newline$,
+			... "Minimum = ", better_min, tab$, "Maximum = ", better_max
+selectObject: soundID
+pitchID = To Pitch (filtered autocorrelation): 0, better_min, better_max, 15, "no", 0.03, 0.09, 0.5, 0.055, 0.35, 0.14
+
+# Extract formants and intensity
 selectObject: soundID
 formantID = To Formant (burg): 0.0, formants, formant_ceiling, 0.025, 50
 selectObject: soundID
 intensityID = To Intensity: f0_min, 0.0, 1
 
 # Write table header according to input parameters
-table_header$ = "Vowel" + tab$ + "Duration(ms)"
+table_header$ = "Segment" + tab$ + "Duration(ms)"
 if context_tier > 0
 	table_header$ = "Context" + tab$ + "Context duration(ms)" + tab$ + table_header$ + tab$ + "Duration(%)"
 endif
@@ -81,37 +89,37 @@ table_header$ = table_header$ + tab$ + "Pitch_contour"
 
 # Data processing starts here!
 final_data$ = ""
-for segment from 1 to vowel_segments
+for segment from 1 to segments
 	selectObject: textgridID
-	segment_label$ = Get label of interval: vowel_tier, segment
-	vowel_data$ = ""
+	segment_label$ = Get label of interval: segment_tier, segment
+	segment_data$ = ""
 
-	##### Get data of every vowel (skip empty segments)
+	##### Get data of every non-empty segment
 	if segment_label$ <> ""
 		### Get data points (timestamps)
-		vowel_start = Get start time of interval: vowel_tier, segment
-		vowel_end = Get end time of interval: vowel_tier, segment
-		vowel_mid = (vowel_start + vowel_end) / 2
-		vowel_q1 = (vowel_start + vowel_mid) / 2
-		vowel_q3 = (vowel_mid + vowel_end) / 2
-		vowel_duration = vowel_end - vowel_start
-		vowel_data$ = segment_label$ + tab$ + string$(vowel_duration * 1000)
+		segment_start = Get start time of interval: segment_tier, segment
+		segment_end = Get end time of interval: segment_tier, segment
+		segment_mid = (segment_start + segment_end) / 2
+		segment_q1 = (segment_start + segment_mid) / 2
+		segment_q3 = (segment_mid + segment_end) / 2
+		segment_duration = segment_end - segment_start
+		segment_data$ = segment_label$ + tab$ + string$(segment_duration * 1000)
 
-		vowel_start = vowel_start + (vowel_duration * padding / 100)
-		vowel_end = vowel_end - (vowel_duration * padding / 100)
+		segment_start = segment_start + (segment_duration * padding / 100)
+		segment_end = segment_end - (segment_duration * padding / 100)
 		
-		points# = {vowel_start, vowel_q1, vowel_mid, vowel_q3, vowel_end}
+		points# = {segment_start, segment_q1, segment_mid, segment_q3, segment_end}
 
-		### Get context data and relative duration of vowels
+		### Get context data and relative duration of segments
 		if context_tier > 0
-			context = Get interval at time: context_tier, vowel_start
+			context = Get interval at time: context_tier, segment_start
 			context_label$ = Get label of interval: context_tier, context
 			context_start = Get start time of interval: context_tier, context
 			context_end = Get end time of interval: context_tier, context
 			context_duration = context_end - context_start
-			vowel_relative_duration = (vowel_duration / context_duration) * 100
+			segment_relative_duration = (segment_duration / context_duration) * 100
 			context_data$ = context_label$ + tab$ + string$(context_duration * 1000)
-			vowel_data$ = context_data$ + tab$ + vowel_data$ + tab$ + string$(vowel_relative_duration) + "%"
+			segment_data$ = context_data$ + tab$ + segment_data$ + tab$ + string$(segment_relative_duration) + "%"
 		endif
 
 		### Get pitch, intensity and formants at each point
@@ -124,11 +132,11 @@ for segment from 1 to vowel_segments
 			endif
 			selectObject: intensityID
 			intensity_at_point = Get value at time: points#[point], "cubic"
-			vowel_data$ = vowel_data$ + tab$ + string$(points#[point]) + tab$ + string$(intensity_at_point)
+			segment_data$ = segment_data$ + tab$ + string$(points#[point]) + tab$ + string$(intensity_at_point)
 			for formant from 1 to 3	
 				selectObject: formantID
 				formant_at_point = Get value at time: formant, points#[point], "hertz", "linear"
-				vowel_data$ = vowel_data$ + tab$ + string$(formant_at_point)
+				segment_data$ = segment_data$ + tab$ + string$(formant_at_point)
 			endfor
 		endfor
 
@@ -143,7 +151,6 @@ for segment from 1 to vowel_segments
 		# Get index where maximum pitch value will be inserted
 		pitch_max_index = 1 ; if max pitch happens before first point, insert at start
 		if pitch_max_t >= points#[points]
-			appendInfoLine: segment_label$
 			pitch_max_index = points + 1 ; if max pitch happens after last point, insert at end
 		else
 			for point from 1 to (points - 1)
@@ -167,11 +174,11 @@ for segment from 1 to vowel_segments
 			pitch_contour$ = pitch_contour$ + fixed$(pitch_val[point], 2) + " | "
 		endfor
 		pitch_contour$ = pitch_contour$ + fixed$(pitch_val[points+1], 2) + ")"
-		vowel_data$ = vowel_data$ + tab$ + pitch_contour$
+		segment_data$ = segment_data$ + tab$ + pitch_contour$
 
-		# Replace periods by commas and append vowel data to final data
-		vowel_data$ = replace$(vowel_data$, ".", ",", 0)
-		final_data$ = final_data$ + vowel_data$ + newline$
+		# Replace periods by commas and append segment data to final data
+		segment_data$ = replace$(segment_data$, ".", ",", 0)
+		final_data$ = final_data$ + segment_data$ + newline$
 	endif
 endfor
 
@@ -179,7 +186,7 @@ final_output$ = table_header$ + newline$ + final_data$
 
 # Write final output (a tab-separated text file)
 beginPause: "Confirm path to output file"
-	outfile: "Outfile", folder$ + sound_name$ + ".txt"
+	outfile: "Outfile", folder$ + sound_name$ + "_" + tier_name$ + ".txt"
 endPause: "Continue", 1
 writeFile: outfile$, final_output$
 
@@ -189,7 +196,7 @@ writeFile: outfile$, final_output$
 to_NORM = 0
 norm_outfile$ = folder$ + sound_name$ + "_NORM.txt"
 if preprocessing
-	vowel_table = Read Table from tab-separated file: outfile$
+	segment_table = Read Table from tab-separated file: outfile$
 
 	column_exists = Get column index: "Intensity_avg"
 	if column_exists == 0
@@ -212,25 +219,25 @@ if preprocessing
 		Append column: "F3_avg"
 	endif
 
-	vowels = Get number of rows
-	for vowel from 1 to vowels
+	segments = Get number of rows
+	for segment from 1 to segments
 		# Read intensity and formant values at each point
 		intensity# = zero#(points)
 		f1# = zero#(points) 
 		f2# = zero#(points)
 		f3# = zero#(points)
 		for point from 1 to points
-			intensity#[point] = Get value: vowel, "Intensity_p" + string$(point) ; Intensity shouldn't return undefined values
+			intensity#[point] = Get value: segment, "Intensity_p" + string$(point) ; Intensity shouldn't return undefined values
 
-			f1#[point] = Get value: vowel, "F1_p" + string$(point)
+			f1#[point] = Get value: segment, "F1_p" + string$(point)
 			if f1#[point] == undefined
 				f1#[point] = -1
 			endif
-			f2#[point] = Get value: vowel, "F2_p" + string$(point)
+			f2#[point] = Get value: segment, "F2_p" + string$(point)
 			if f3#[point] == undefined
 				f3#[point] = -1
 			endif
-			f3#[point] = Get value: vowel, "F3_p" + string$(point)
+			f3#[point] = Get value: segment, "F3_p" + string$(point)
 			if f3#[point] == undefined
 				f3#[point] = -1
 			endif
@@ -277,17 +284,17 @@ if preprocessing
 			if f1#[point] < f1q1 - (factor * f1_IQR) | f1#[point] > f1q3 + (factor * f1_IQR)
 				f1_sum = f1_sum - f1#[point]
 				f1_size = f1_size - 1
-				Set string value: vowel, "F1_p" + string$(point), "outlier=" + string$(f1#[point])
+				Set string value: segment, "F1_p" + string$(point), "outlier=" + string$(f1#[point])
 			endif
 			if f2#[point] < f2q1 - (factor * f2_IQR) | f2#[point] > f2q3 + (factor * f2_IQR)
 				f2_sum = f2_sum - f2#[point]
 				f2_size = f2_size - 1
-				Set string value: vowel, "F2_p" + string$(point), "outlier=" + string$(f2#[point])			
+				Set string value: segment, "F2_p" + string$(point), "outlier=" + string$(f2#[point])			
 			endif
 			if f3#[point] < f3q1 - (factor * f3_IQR) | f3#[point] > f3q3 + (factor * f3_IQR)
 				f3_sum = f3_sum - f3#[point]
 				f3_size = f3_size - 1
-				Set string value: vowel, "F3_p" + string$(point), "outlier=" + string$(f3#[point]) 
+				Set string value: segment, "F3_p" + string$(point), "outlier=" + string$(f3#[point]) 
 			endif
 		endfor
 		f1_avg = f1_sum / f1_size
@@ -296,15 +303,15 @@ if preprocessing
 		intensity_avg = mean(intensity#) ; No preprocessing done to intensity values, just get average and maximum
 		intensity_max = max(intensity#)
 
-		Set string value: vowel, "F1_avg", replace$(string$(f1_avg), ".", ",", 0)
-		Set string value: vowel, "F2_avg", replace$(string$(f2_avg), ".", ",", 0)
-		Set string value: vowel, "F3_avg", replace$(string$(f3_avg), ".", ",", 0)
-		Set string value: vowel, "Intensity_avg", replace$(string$(intensity_avg), ".", ",", 0)
-		Set string value: vowel, "Intensity_max", replace$(string$(intensity_max), ".", ",", 0)
+		Set string value: segment, "F1_avg", replace$(string$(f1_avg), ".", ",", 0)
+		Set string value: segment, "F2_avg", replace$(string$(f2_avg), ".", ",", 0)
+		Set string value: segment, "F3_avg", replace$(string$(f3_avg), ".", ",", 0)
+		Set string value: segment, "Intensity_avg", replace$(string$(intensity_avg), ".", ",", 0)
+		Set string value: segment, "Intensity_max", replace$(string$(intensity_max), ".", ",", 0)
 	endfor
 
 	# Save changes
-	selectObject: vowel_table
+	selectObject: segment_table
 	Save as tab-separated file: outfile$
 
 	beginPause: "NORM format"
@@ -313,13 +320,13 @@ if preprocessing
 		word: "Speaker name", ""
 	endPause: "Continue", 1
 	if to_NORM
-		norm_table = Create Table with column names: sound_name$ + "_NORM", vowels, "Speaker Vowel Context F1 F2 F3 F1g F2g F3g"
+		norm_table = Create Table with column names: sound_name$ + "_NORM", segments, "Speaker Segment Context F1 F2 F3 F1g F2g F3g"
 	
-		selectObject: vowel_table
+		selectObject: segment_table
 		rows = Get number of rows
 		for row from 1 to rows
-			selectObject: vowel_table
-			vowel$ = Get value: row, "Vowel"
+			selectObject: segment_table
+			segment$ = Get value: row, "Segment"
 			if context_tier > 0
 				context$ = Get value: row, "Context"
 			else
@@ -331,7 +338,7 @@ if preprocessing
 		
 			selectObject: norm_table
 			Set string value: row, "Speaker", speaker_name$
-			Set string value: row, "Vowel", vowel$
+			Set string value: row, "Segment", segment$
 			Set string value: row, "Context", context$
 			Set numeric value: row, "F1", number(f1_avg$)
 			Set numeric value: row, "F2", number(f2_avg$)
@@ -348,7 +355,7 @@ if preprocessing
 		# Remove objects opened by these subroutines
 		removeObject: norm_table
 	endif
-	removeObject: vowel_table
+	removeObject: segment_table
 endif
 
 writeInfoLine: "Successfully created or modified file(s): ", newline$, outfile$
