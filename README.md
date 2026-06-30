@@ -12,12 +12,13 @@
 -	`formants` - Number of formants
 -	`formant_ceiling` - Formant ceiling (Hz)
 -	`preprocessing` - If true, applies preprocessing steps
+-	`spectral_moments` - If true, get spectral moments (center of gravity, standard deviation, skewness and kurtosis)
 
 > Requires an input **sound** file. The script looks for a TextGrid with the same name as the Sound file and located in the same folder.
 
 **Data collection and preprocessing:**
 
-For each non-empty interval in `segment_tier`, extracts duration, intensity, formants and pitch (fundamental frequency) from five data points (segment start, 25%, middle, 75%, and end). Pitch is first extracted with Praat's default parameters and used to get minimum and maximum values which are then used to extract a second, optimized Pitch object. The five pitch values are combined with the maximum pitch value in a list ordered by time, and written as a pipe-separated string in a single column labeled "Pitch_contour".
+For each non-empty interval in `segment_tier`, extracts duration, intensity, formants and pitch (fundamental frequency) from five data points (segment start, 25%, middle, 75%, and end). Pitch is first extracted with Praat's default parameters and used to get minimum and maximum values which are then used to extract a second, optimized Pitch object. The five pitch values are combined with the maximum pitch value in a list ordered by time, and written as a pipe-separated string in a single column labeled "Pitch contour".
 
 Unless `preprocessing` is unchecked, tags outlier formant values using interquartile range (undefined values are set to -1) and calculates normal averages for F1, F2 and F3. Optionally, formats data to [NORM](https://lingtools.uoregon.edu/norm/index.php) standards using these averages.
 
