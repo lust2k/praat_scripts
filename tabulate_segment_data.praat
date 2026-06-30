@@ -3,12 +3,13 @@
 #
 # Input:
 # 	sound_file - Sound file (.wav)
-# 	segment_tier - Interval tier containing annotated segments - or other segments
+# 	segment_tier - Interval tier containing annotated segments
 #	context_tier - Interval tier containing annotated context, such as syllables, moras, words or sentences (leave at 0 to ignore; if a positive value is assigned, the final output will include context data and relative segment duration)
 #	padding - Padding (%) to the first and last data points (if padding = 0, first and last points will be exactly at segment start and end; if say padding = 5, first point will be at 5% and last at 95%)
 #	formants - Number of formants
 #	formant_ceiling - Formant ceiling (Hz)
 # 	preprocessing - If true, applies preprocessing steps
+#	spectral_moments - If true, get spectral moments (center of gravity, standard deviation, skewness and kurtosis)
 # Output:
 #	outfile - Tab-separated text file (.txt) containing the following data: segment label, segment duration (ms), intensity (dB), formants (Hz) and pitch/F0 (Hz) at each point
 #	(OPTIONAL) norm_outfile - Tab-separated text file (.txt) formatted to NORM standards
@@ -20,15 +21,17 @@
 form: "Extract and tabulate segment data from an interval tier"
 	infile: "Sound file", ""
 	natural: "Segment tier", ""
-	comment: "Context is used as reference to calculate segment relative duration"
+	comment: "Context is used as reference to calculate segment relative duration."
 	integer: "Context tier", "0"
-	comment: "Padding (%) to the first and last data points"
+	comment: "Padding (%) to the first and last data points."
 	integer: "Padding", "0"
-	comment: "Formant settings"
+	comment: "Formant settings."
 	natural: "Formants", "5"
 	positive: "Formant ceiling", "5500"
-	comment: "Formant data preprocessing. Identify outliers and calculate averages."
+	comment: "Data preprocessing. Identify outliers and calculate averages."
 	boolean: "Preprocessing", 1
+	comment: "Get spectral moments (mainly for fricatives)."
+	boolean: "Spectral moments", 0
 endform
 
 if praatVersion < 6435
@@ -85,7 +88,10 @@ for point from 1 to points
 		table_header$ = table_header$ + tab$ + "F" + string$(formant) + "_p" + string$(point)
 	endfor
 endfor
-table_header$ = table_header$ + tab$ + "Pitch_contour"
+table_header$ = table_header$ + tab$ + "Pitch contour"
+if spectral_moments
+	table_header$ = table_header$ + tab$ + "Centroid" + tab$ + "Standard deviation" + tab$ + "Skewness" + tab$ + "Kurtosis"
+endif
 
 # Data processing starts here!
 final_data$ = ""
@@ -110,7 +116,7 @@ for segment from 1 to segments
 		
 		points# = {segment_start, segment_q1, segment_mid, segment_q3, segment_end}
 
-		### Get context data and relative duration of segments
+		### Get context data and relative duration
 		if context_tier > 0
 			context = Get interval at time: context_tier, segment_start
 			context_label$ = Get label of interval: context_tier, context
@@ -140,7 +146,7 @@ for segment from 1 to segments
 			endfor
 		endfor
 
-		### Add maximum pitch to the list of values (ordered by time)
+		## Add maximum pitch to the list of values (ordered by time)
 		# This ensures we don't make mistakes in identifying the peak and its alignment
 		selectObject: pitchID
 		pitch_max = Get maximum: points#[1], points#[points], "Hertz", "parabolic"
@@ -175,6 +181,21 @@ for segment from 1 to segments
 		endfor
 		pitch_contour$ = pitch_contour$ + fixed$(pitch_val[points+1], 2) + ")"
 		segment_data$ = segment_data$ + tab$ + pitch_contour$
+
+		### Get spectral moments
+		if spectral_moments
+			# Isolate a spectral slice (window length = 0.025s) at the segment's midpoint
+			selectObject: soundID
+        	partID = Extract part: segment_mid - 0.0125, segment_mid + 0.0125, "hamming", 1.0, "yes"
+			spectrumID = To Spectrum: 1
+			cog = Get centre of gravity: 2
+			stddev = Get standard deviation: 2
+			skew = Get skewness: 2
+			kurt = Get kurtosis: 2
+			removeObject: partID, spectrumID
+			spectral_moments$ = string$(cog) + tab$ + string$(stddev) + tab$ + string$(skew) + tab$ + string$(kurt)
+			segment_data$ = segment_data$ + tab$ + spectral_moments$
+		endif
 
 		# Replace periods by commas and append segment data to final data
 		segment_data$ = replace$(segment_data$, ".", ",", 0)
@@ -316,7 +337,7 @@ if preprocessing
 
 	beginPause: "NORM format"
 		comment: "Format the data to NORM standards?"
-		boolean: "To NORM", 1
+		boolean: "To NORM", 0
 		word: "Speaker name", ""
 	endPause: "Continue", 1
 	if to_NORM
@@ -369,8 +390,4 @@ if to_NORM
 endif
 
 # Remove objects opened by this script
-removeObject: soundID
-removeObject: textgridID
-removeObject: pitchID
-removeObject: formantID
-removeObject: intensityID
+removeObject: soundID, textgridID, pitchID, formantID, intensityID
