@@ -187,12 +187,20 @@ for segment from 1 to segments
 			# Isolate a spectral slice (window length = 0.025s) at the segment's midpoint
 			selectObject: soundID
         	partID = Extract part: segment_mid - 0.0125, segment_mid + 0.0125, "hamming", 1.0, "yes"
+			# Apply a high-pass filter to isolate friction
+			cutoff = f0_max * 3 ; using 3 times maximum F0 as a reference value for the cutoff frequency
+			if cutoff < 500
+				cutoff = 500 ; minimum cutoff
+			elsif cutoff > 1000
+				cutoff = 1000 ; maximum cutoff
+			endif
+			filteredID = Filter (pass Hann band): cutoff, 11000, 100 ; cutting frequencies above 11kHz as well
 			spectrumID = To Spectrum: 1
 			cog = Get centre of gravity: 2
 			stddev = Get standard deviation: 2
 			skew = Get skewness: 2
 			kurt = Get kurtosis: 2
-			removeObject: partID, spectrumID
+			removeObject: partID, filteredID, spectrumID
 			spectral_moments$ = string$(cog) + tab$ + string$(stddev) + tab$ + string$(skew) + tab$ + string$(kurt)
 			segment_data$ = segment_data$ + tab$ + spectral_moments$
 		endif
