@@ -12,7 +12,7 @@
 -	`formants` - Number of formants
 -	`formant_ceiling` - Formant ceiling (Hz)
 -	`preprocessing` - If true, applies preprocessing steps
--	`spectral_moments` - If true, get spectral moments (center of gravity, standard deviation, skewness and kurtosis)
+-	`spectral_moments` - If true, get spectral moments (center of gravity, standard deviation, skewness and kurtosis) and the first three spectral peaks
 
 > Requires an input **sound** file. The script looks for a TextGrid with the same name as the Sound file and located in the same folder.
 
