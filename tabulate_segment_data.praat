@@ -30,7 +30,7 @@ form: "Extract and tabulate segment data from an interval tier"
 	positive: "Formant ceiling", "5500"
 	comment: "Data preprocessing. Identify outliers and calculate averages."
 	boolean: "Preprocessing", 1
-	comment: "Get spectral moments (mainly for fricatives)."
+	comment: "Get spectral moments and peaks (mainly for fricatives)."
 	boolean: "Spectral moments", 0
 endform
 
@@ -90,7 +90,8 @@ for point from 1 to points
 endfor
 table_header$ = table_header$ + tab$ + "Pitch contour"
 if spectral_moments
-	table_header$ = table_header$ + tab$ + "Centroid" + tab$ + "Standard deviation" + tab$ + "Skewness" + tab$ + "Kurtosis"
+	table_header$ = table_header$ + tab$ + "First peak" + tab$ + "Second peak" + tab$ + "Third peak" + tab$ 
+									 ... + "Centroid" + tab$ + "Standard deviation" + tab$ + "Skewness" + tab$ + "Kurtosis"
 endif
 
 # Data processing starts here!
@@ -182,27 +183,33 @@ for segment from 1 to segments
 		pitch_contour$ = pitch_contour$ + fixed$(pitch_val[points+1], 2) + ")"
 		segment_data$ = segment_data$ + tab$ + pitch_contour$
 
-		### Get spectral moments
+		### Get spectral moments and peaks
 		if spectral_moments
 			# Isolate a spectral slice (window length = 0.025s) at the segment's midpoint
 			selectObject: soundID
         	partID = Extract part: segment_mid - 0.0125, segment_mid + 0.0125, "hamming", 1.0, "yes"
-			# Apply a high-pass filter to isolate friction
-			cutoff = f0_max * 3 ; using 3 times maximum F0 as a reference value for the cutoff frequency
-			if cutoff < 500
-				cutoff = 500 ; minimum cutoff
-			elsif cutoff > 1000
-				cutoff = 1000 ; maximum cutoff
-			endif
-			filteredID = Filter (pass Hann band): cutoff, 11000, 100 ; cutting frequencies above 11kHz as well
+			# Apply a filter to isolate friction
+			filteredID = Filter (pass Hann band): 1000, 11000, 100
+			# Moments
 			spectrumID = To Spectrum: 1
 			cog = Get centre of gravity: 2
 			stddev = Get standard deviation: 2
 			skew = Get skewness: 2
 			kurt = Get kurtosis: 2
-			removeObject: partID, filteredID, spectrumID
+			# Peaks
+			lpc_spectrumID = LPC smoothing: 10, 50 ; use LPC to isolate peaks (up to 10 peaks from 1kHz to 11kHz)
+			spectrumTierID = To SpectrumTier (peaks)
+			tableID = Down to Table
+			Sort rows: "pow(dB/Hz)"
+			rows = Get number of rows
+			first_peak = Get value: rows, "freq(Hz)"
+			second_peak = Get value: rows - 1, "freq(Hz)"
+			third_peak = Get value: rows - 2, "freq(Hz)"		
+			removeObject: partID, filteredID, spectrumID, lpc_spectrumID, spectrumTierID, tableID
+
 			spectral_moments$ = string$(cog) + tab$ + string$(stddev) + tab$ + string$(skew) + tab$ + string$(kurt)
-			segment_data$ = segment_data$ + tab$ + spectral_moments$
+			spectral_peaks$ = string$(first_peak) + tab$ + string$(second_peak) + tab$ + string$(third_peak)
+			segment_data$ = segment_data$ + tab$ + spectral_peaks$ + tab$ + spectral_moments$ 
 		endif
 
 		# Replace periods by commas and append segment data to final data
