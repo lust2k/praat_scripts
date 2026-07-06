@@ -189,7 +189,13 @@ for segment from 1 to segments
 			selectObject: soundID
         	partID = Extract part: segment_mid - 0.0125, segment_mid + 0.0125, "hamming", 1.0, "yes"
 			# Apply a filter to isolate friction
-			filteredID = Filter (pass Hann band): 1000, 11000, 100
+			cutoff = better_max * 3
+			if cutoff < 500
+				cutoff = 500
+			elsif cutoff > 1000
+				cutoff = 1000
+			endif
+			filteredID = Filter (pass Hann band): cutoff, 11000, 100
 			# Moments
 			spectrumID = To Spectrum: 1
 			cog = Get centre of gravity: 2
