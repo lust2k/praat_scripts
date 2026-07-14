@@ -5,7 +5,7 @@
 # 	sound_file - Sound file (.wav)
 # 	segment_tier - Interval tier containing annotated segments
 #	context_tier - Interval tier containing annotated context, such as syllables, moras, words or sentences (leave at 0 to ignore; if a positive value is assigned, the final output will include context data and relative segment duration)
-#	padding - Padding (%) to the first and last data points (if padding = 0, first and last points will be exactly at segment start and end; if say padding = 5, first point will be at 5% and last at 95%)
+#	padding - Padding (%) to the first and last data points (if padding = 0, first and last points will be exactly at segment start and end; if padding = 5, first point will be at 5% and last at 95%)
 #	formants - Number of formants
 #	formant_ceiling - Formant ceiling (Hz)
 # 	preprocessing - If true, applies preprocessing steps
@@ -25,6 +25,8 @@ form: "Extract and tabulate segment data from an interval tier"
 	integer: "Context tier", "0"
 	comment: "Padding (%) to the first and last data points."
 	integer: "Padding", "0"
+	comment: "Recording environment." ; very quiet (studio) recordings require a lower silence threshold
+	boolean: "Very quiet", 0
 	comment: "Formant settings."
 	natural: "Formants", "5"
 	positive: "Formant ceiling", "5500"
@@ -58,24 +60,40 @@ segments = Get number of intervals: segment_tier
 # Get tier name
 tier_name$ = Get tier name: segment_tier
 
-# Extract pitch in two steps to optimize inputs
+### Extract pitch in two passes, optimized for speaker's natural voice pitch
+pitch_floor = 50
+pitch_top = 800
+silence_threshold = 0.09
+if very_quiet
+	silence_threshold = 0.03
+endif
+# First pass to get median pitch
 selectObject: soundID
-pitchID = To Pitch (filtered autocorrelation): 0, 50, 800, 15, "no", 0.03, 0.09, 0.5, 0.055, 0.35, 0.14
-f0_min = Get minimum: 0, 0, "Hertz", "parabolic"
-f0_max = Get maximum: 0, 0, "Hertz", "parabolic"
+pitchID = To Pitch (filtered autocorrelation): 0, pitch_floor, pitch_top, 15, "no", 0.03, silence_threshold, 0.5, 0.055, 0.35, 0.14
+median_pitch = Get quantile: 0, 0, 0.5, "Hertz"
 removeObject: pitchID
-better_min = floor(f0_min - (0.2 * f0_min))
-better_max = ceiling(f0_max + (0.2 * f0_max))
-pauseScript: "Optimizing pitch parameters to: ", newline$,
-			... "Minimum = ", better_min, tab$, "Maximum = ", better_max
+if median_pitch < 150
+	info$ = "Low-pitched voice; setting pitch search range to 50-600 Hz"
+	pitch_top = 600
+elsif median_pitch >= 150 and median_pitch < 250
+	info$ = Standard, average-pitched voice; setting pitch search range to 75-800 Hz"
+	pitch_floor = 75
+else
+	info$ = "Very high-pitched voice; setting pitch search range to 100-1000 Hz"
+	pitch_floor = 100
+	pitch_top = 1000
+endif
+pauseScript: info$
+
 selectObject: soundID
-pitchID = To Pitch (filtered autocorrelation): 0, better_min, better_max, 15, "no", 0.03, 0.09, 0.5, 0.055, 0.35, 0.14
+pitchID = To Pitch (filtered autocorrelation): 0, pitch_floor, pitch_top, 15, "no", 0.03, silence_threshold, 0.5, 0.055, 0.35, 0.14
+
 
 # Extract formants and intensity
 selectObject: soundID
 formantID = To Formant (burg): 0.0, formants, formant_ceiling, 0.025, 50
 selectObject: soundID
-intensityID = To Intensity: f0_min, 0.0, 1
+intensityID = To Intensity: pitch_floor, 0.0, 1
 
 # Write table header according to input parameters
 table_header$ = "Segment" + tab$ + "Duration(ms)"
